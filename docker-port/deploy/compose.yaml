@@ -1,0 +1,76 @@
+# The whole server on Linux: PostgreSQL + the game server, both containers.
+#
+# LINUX ONLY in production because of `network_mode: host`: every map's zone binds
+# its own port (7010+, 7020, ...) and announces it to the client, so the simplest
+# correct answer is to let the container use the host's network directly - no NAT,
+# no publishing 40 ports, and the address a zone advertises is the host's own.
+#
+#   cp deploy/env.example .env      # then edit the password
+#   docker compose -f deploy/compose.yaml up -d --build
+#
+# The game server runs the MANAGER (cmd\zoneman) or a single role; see the command
+# below. Zones the manager starts are children of the same container, exactly as
+# they are children of one process on Windows today.
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-granado}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-ge_data}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5433:5432"     # loopback only: nothing outside the box talks to it
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-granado} -d ${POSTGRES_DB:-ge_data}"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  geserver:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    network_mode: host           # zones bind their own ports and announce them
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      GE_PG_DSN: postgres://${POSTGRES_USER:-granado}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@127.0.0.1:5433/${POSTGRES_DB:-ge_data}?sslmode=disable
+      # GE_SIGHT_OFF: "1"        # ring OFF for a run; unset = ring ON (the default)
+    volumes:
+      - ../out/zones:/app/out/zones
+      - ../out/logs:/app/out/logs
+      # the client tree: dictionary_local.xml, dictionary_local_serverpack.xml and
+      # xml\datatable_*.xml all live here. /ge, not /app/ge: the server's defaults
+      # are written for the repo layout (../../ge from out\), and /app plays
+      # docker-port inside the image.
+      - ${GE_CLIENT_DIR:-/srv/ge}:/ge:ro
+    # THE MANAGER, which is also the image's CMD. It reads the WARM SET from the zone_daemon plan
+    # in the database (the deployment's data) and starts each zone as a child in this container.
+    # `-prepare=false` is the deployment decision: no Python here, derived data is baked at build
+    # time on the dev machine - a stale corpus is invisible at runtime (deploy/README.md).
+    # A single zone for a smoke test instead:
+    #   command: ["/app/out/goserver", "-role", "zone", "-map", "10", "-addr", ":7102"]
+    # NO POLICY ON THE COMMAND LINE. The manager reads server.json (this file is baked to
+    # /app/out/server.json, the working directory) and takes its settings from the
+    # "manager" section: the zone binary, base port, log dir, warm set, cap, idle and
+    # linger, memlimit, prepare. A flag still overrides the file, but the container passes
+    # NONE - one place to edit, diffable, and the same file shape the Windows run uses
+    # with different paths (owner's rule: config lives in JSON, not in commands).
+    #
+    # TUNING WITHOUT A REBUILD: uncomment the mount below and copy server.json to the host
+    # first (one small file, e.g. /srv/geserver/server.json). The manager and every zone
+    # child read the file at startup, so `docker compose restart geserver` applies an edit.
+    # It is COMMENTED OUT on purpose: Docker creates a DIRECTORY where a bind-mounted file
+    # is missing, and the server would then fail to read a directory as its config.
+    #   volumes:
+    #     - /srv/geserver/server.json:/app/out/server.json:ro
+    command: ["/app/out/zoneman"]
+
+volumes:
+  pgdata:

@@ -1,0 +1,155 @@
+"""make_barrack_table.py - write the BARRACK command table for the Go server.
+
+`data\\cmd_table.txt` is the ZONE id space (128..9529). The barrack/login ids are
+single digits and absent from it, which is why a barrack capture cannot be cut
+into packets by that table.
+
+The client's own lifted table DOES hold them: `data\\cmd_table_live.txt` (dumped
+from the live client) covers ids 3..3889, and the barrack/login range is 3..71
+(101+ is the global server's ZG/GZ space).
+
+This script takes that range and adds the one thing the table does not carry:
+WHICH STRUCT SHAPE the packet has. That matters because the length word moves:
+
+    PKS_DEFAULT            command(2)                                  fixed
+    PKS_VARSIZE            command(2) len(2)                           len at +2
+    PKS_SECURITY_DEFAULT   command(2) seq(4) checksum(4)               fixed
+    PKS_SECURITY_VARSIZE   command(2) seq(4) checksum(4) len(2)        len at +10
+
+(`source2\\geShared\\include\\gePacketBase.h`.) CB_LOGIN is a
+PKS_SECURITY_VARSIZE, so its length sits at +10 - reading +2 gives 0 and the
+splitter would stall. Proven on the capture: the packet is 812 bytes, the length
+word says 812, and the cipher padded it to 816.
+
+Two independent sources are cross-checked here: the id->name->size mapping from
+the CLIENT's own table, and the shape from the SHIPPED headers. A size-0 id with
+no shape found is reported loudly, never guessed.
+
+Usage (from src\\):
+    python make_barrack_table.py
+"""
+import os
+import re
+import sys
+
+import ge_paths
+
+LIVE = os.path.join(ge_paths.ROOT, "data", "cmd_table_live.txt")
+HEADERS = os.path.join(os.path.dirname(ge_paths.ROOT.rstrip("\\/")),
+                       "source2", "geShared", "include")
+OUT = os.path.join(ge_paths.ROOT, "data", "cmd_table_barrack.txt")
+
+BARRACK_MIN, BARRACK_MAX = 3, 71
+
+# struct PKS_X : public PKS_Y   ->   X -> Y
+STRUCT = re.compile(r"struct\s+(PKS_\w+)\s*:\s*public\s+(PKS_\w+)")
+
+# Shape name -> where the length word sits (0 = the packet is fixed size).
+SHAPES = {
+    "PKS_DEFAULT": 0,
+    "PKS_VARSIZE": 2,
+    "PKS_SYNCHRONIZED": 0,
+    "PKS_SECURITY_DEFAULT": 0,
+    "PKS_SECURITY_VARSIZE": 10,
+}
+
+
+def load_shapes():
+    """Read the shipped headers: struct name -> base struct name."""
+    found = {}
+    for root, _dirs, files in os.walk(HEADERS):
+        for name in files:
+            if not name.endswith(".h"):
+                continue
+            path = os.path.join(root, name)
+            with open(path, encoding="latin-1", errors="replace") as f:
+                for m in STRUCT.finditer(f.read()):
+                    found[m.group(1)] = m.group(2)
+    return found
+
+
+def base_shape(struct, shapes, depth=0):
+    """Follow the inheritance chain until a known shape is reached."""
+    seen = set()
+    while struct and depth < 8:
+        if struct in SHAPES:
+            return struct
+        if struct in seen:
+            return None
+        seen.add(struct)
+        struct = shapes.get(struct)
+        depth += 1
+    return None
+
+
+def load_rows():
+    rows = []
+    with open(LIVE, encoding="utf-8", errors="replace") as f:
+        for line in f:
+            p = line.split()
+            if len(p) < 3 or not p[0].isdigit():
+                continue
+            cid = int(p[0])
+            if BARRACK_MIN <= cid <= BARRACK_MAX:
+                rows.append((cid, int(p[1]), p[2]))
+    return rows
+
+
+def main():
+    shapes = load_shapes()
+    rows = load_rows()
+    if not rows:
+        print("no ids %d..%d in %s" % (BARRACK_MIN, BARRACK_MAX, LIVE))
+        return 1
+
+    out, unknown = [], []
+    for cid, size, name in sorted(rows):
+        shape = base_shape("PKS_" + name, shapes)
+        if shape is None:
+            unknown.append((cid, name))
+            out.append((cid, size, name, "?"))
+            continue
+        out.append((cid, size, name, SHAPES[shape] and "len@%d" % SHAPES[shape]
+                    or "fixed"))
+
+    # A size-0 id whose shape is unknown cannot be cut. That is a finding, not a
+    # nuisance: say so instead of writing a table the Go side would trust.
+    # Only CLIENT->SERVER packets are parsed by this server, so only those need
+    # a shape. A BC_ packet is one WE build, and its shape matters later, when
+    # the reply is written - not now.
+    stuck = [(t[0], t[2]) for t in out
+             if t[1] == 0 and t[3] == "?" and not t[2].startswith("BC_")]
+    if stuck:
+        print("REFUSED: variable-size ids with no known struct shape: %s"
+              % ", ".join("%d %s" % (c, n) for c, n in stuck))
+        return 1
+    if unknown:
+        print("warn: %d id(s) with no struct shape in the shipped headers: %s"
+              % (len(unknown), ", ".join("%d %s" % (c, n) for c, n in unknown)))
+        print("      (all BC_ = server->client: not parsed here, only built later)")
+
+    header = [
+        "# BARRACK command table (ids %d..%d) - the small id space the zone"
+        % (BARRACK_MIN, BARRACK_MAX),
+        "# table does not cover. Generated by src\\make_barrack_table.py.",
+        "# Sources cross-checked: ids+names+sizes from the CLIENT's own table",
+        "# (data\\cmd_table_live.txt, dumped from the live client), packet shape",
+        "# from the shipped headers (source2\\geShared\\include\\gePacketBase.h).",
+        "#",
+        "# id\tsize\tname\tshape",
+        "#   size 0 = variable size; the shape says where the length word is:",
+        "#   len@2  = command(2) len(2)                (PKS_VARSIZE)",
+        "#   len@10 = command(2) seq(4) chk(4) len(2)  (PKS_SECURITY_VARSIZE)",
+        "#   fixed  = no length word at all",
+        "",
+    ]
+    lines = ["%d\t%d\t%s\t%s" % row for row in out]
+    with open(OUT, "w", encoding="utf-8", newline="\n") as f:
+        f.write("\n".join(header + lines) + "\n")
+    print("wrote %s (%d commands, %d variable)"
+          % (OUT, len(out), sum(1 for r in out if r[1] == 0)))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

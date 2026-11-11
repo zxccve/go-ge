@@ -1,0 +1,31 @@
+# The public repository's .gitignore.
+#
+# The private tree keeps this as PUBLIC.gitignore; the publish step copies it in as
+# .gitignore. It exists so a reader cannot commit what must never be committed:
+# their own game files, the tables the tools produce from them, and build output.
+
+# ---- what the tools produce (never commit) ----
+docker-port/data/
+docker-port/navmesh/
+docker-port/captures/
+docker-port/out/
+docker-port/cache/
+docker-port/logs/
+docker-port/backup/
+docker-port/screenshots/
+
+# ---- game files the reader owns (never commit) ----
+ge/
+GEAndromida/
+GETerraSeptember1th2022/
+*.ipf
+*.ies
+*.ipf.txt
+
+# ---- artefacts and secrets ----
+*.pkl
+*.dmp
+*.bak
+*.exe
+.env
+accounts.ini

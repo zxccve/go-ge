@@ -1,0 +1,62 @@
+{
+  "listen": {
+    "barrack_addr": ":7001",
+    "zone_addr": "",
+    "advertise": "",
+    "machine": "local"
+  },
+  "paths": {
+    "log": "",
+    "barrack_table": "/app/data/cmd_table_barrack.txt",
+    "zone_table": "/app/data/cmd_table_live_z.txt",
+    "replay_dir": "/app/data/replay_live",
+    "zones_dir": "/app/out/zones",
+    "presence_dir": "/app/out/zones",
+    "points": "/app/data/zone_points.json",
+    "xml_dir": "",
+    "npc_dir": "/app/data/zone_npcs",
+    "npc_hide": "/app/config/zone_npc_hide.txt",
+    "mesh_dir": "/app/navmesh/mesh",
+    "nav_dir": "/app/data/zone_nav",
+    "lua_corpus": "/app/out/lua_corpus",
+    "text_image": "/app/out/text_image.bin",
+    "dictionary": "/ge/dictionary/dictionary_local.xml",
+    "id_map": "/app/data/locale_id_map.json",
+    "item_catalog": "/app/data/item_catalog.json",
+    "job_stats": "/app/data/job_stats.json",
+    "item_stats": "/app/data/item_stats.json",
+    "prices": "/app/data/item_prices.json",
+    "feso_prices": "/app/data/item_feso_prices.json",
+    "equip_slots": "/app/data/item_equip.json",
+    "shop_groups": "/app/data/shop_groups.json",
+    "custom_shops": "/app/data/custom_shops.json"
+  },
+  "engine": {
+    "command": "wine",
+    "args": [
+      "/app/navmesh/pathtool.exe"
+    ]
+  },
+  "mode": {
+    "role": "zone",
+    "map": 10,
+    "monai": "script"
+  },
+  "manager": {
+    "bin": "/app/out/goserver",
+    "zones_dir": "/app/out/zones",
+    "base_port": 7010,
+    "log_dir": "/app/out/logs",
+    "max": 60,
+    "idle": "5m",
+    "linger": "15m",
+    "prepare": false
+  },
+  "scripts": {
+    "no_load": false,
+    "no_refresh": true
+  },
+  "diagnostics": {
+    "metrics_every": "10s"
+  }
+}

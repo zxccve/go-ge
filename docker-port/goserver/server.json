@@ -1,0 +1,76 @@
+{
+  "listen": {
+    "barrack_addr": ":7001",
+    "zone_addr": "",
+    "advertise": "",
+    "machine": "local"
+  },
+  "paths": {
+    "log": "",
+    "barrack_table": "../data/cmd_table_barrack.txt",
+    "zone_table": "../data/cmd_table_live_z.txt",
+    "replay_dir": "../data/replay_live",
+    "zones_dir": "../out/zones",
+    "presence_dir": "../out/zones",
+    "points": "../data/zone_points.json",
+    "xml_dir": "",
+    "npc_dir": "../data/zone_npcs",
+    "npc_hide": "../config/zone_npc_hide.txt",
+    "mesh_dir": "../navmesh/mesh",
+    "nav_dir": "../data/zone_nav",
+    "lua_corpus": "../out/lua_corpus",
+    "dictionary": "../../ge/dictionary/dictionary_local.xml",
+    "id_map": "../data/locale_id_map.json",
+    "item_catalog": "../data/item_catalog.json",
+    "job_stats": "../data/job_stats.json",
+    "item_stats": "../data/item_stats.json",
+    "prices": "../data/item_prices.json",
+    "feso_prices": "../data/item_feso_prices.json",
+    "equip_slots": "../data/item_equip.json",
+    "shop_groups": "../data/shop_groups.json",
+    "custom_shops": "../data/custom_shops.json"
+  },
+  "engine": {
+    "command": "../navmesh/pathtool.exe"
+  },
+  "mode": {
+    "role": "barrack",
+    "map": 10,
+    "monai": "go"
+  },
+  "manager": {
+    "bin": "../out/goserver_zone.exe",
+    "zones_dir": "../out/zones",
+    "base_port": 7010,
+    "log_dir": "../logs",
+    "max": 60,
+    "idle": "5m",
+    "linger": "15m",
+    "prepare": true
+  },
+  "scripts": {
+    "no_load": false,
+    "no_refresh": false
+  },
+  "diagnostics": {
+    "raw_log": false,
+    "stop_offset": 0,
+    "hex": false,
+    "events": false,
+    "distance": false,
+    "strict_range": false,
+    "sight_off": false,
+    "sp_lock": false,
+    "sim_latency_ms": 0,
+    "metrics_every": "10s"
+  },
+  "probe": {
+    "replay_cmds": "",
+    "jp_barrack": false,
+    "jp_list16": false,
+    "jp_subset": "",
+    "jp_one": false,
+    "jp_bare": false,
+    "login_ok_capture": ""
+  }
+}
